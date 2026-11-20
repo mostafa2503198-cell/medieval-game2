@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Medieval</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#000;touch-action:none;user-select:none;-webkit-user-select:none;font-family:sans-serif}
+canvas{display:block}
+#base{position:fixed;width:100px;height:100px;margin:-50px 0 0 -50px;border-radius:50%;background:rgba(255,255,255,.15);border:2px solid rgba(255,255,255,.4);display:none;pointer-events:none}
+#knob{position:absolute;left:30px;top:30px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.6)}
+#atk{position:fixed;right:30px;bottom:30px;width:90px;height:90px;border-radius:50%;background:rgba(200,40,40,.6);border:3px solid #fff;color:#fff;font-size:18px;display:flex;align-items:center;justify-content:center}
+#rot{display:none;position:fixed;inset:0;background:#111;color:#fff;align-items:center;justify-content:center;font-size:22px;text-align:center;z-index:9}
+@media (orientation:portrait){#rot{display:flex}}
+</style>
+</head>
+<body>
+<div id="rot">لف الموبايل بالعرض 🔄</div>
+<div id="base"><div id="knob"></div></div>
+<div id="atk">ضرب</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x87ceeb);
+scene.fog=new THREE.Fog(0x87ceeb,40,160);
+const cam=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,0.1,300);
+const ren=new THREE.WebGLRenderer({antialias:true});
+ren.setPixelRatio(Math.min(devicePixelRatio,2));
+ren.setSize(innerWidth,innerHeight);
+document.body.appendChild(ren.domElement);
+addEventListener('resize',()=>{ren.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()});
+
+scene.add(new THREE.HemisphereLight(0xffffff,0x557744,0.8));
+const sun=new THREE.DirectionalLight(0xffffff,0.7);
+sun.position.set(30,50,20);scene.add(sun);
+
+const M=(c)=>new THREE.MeshLambertMaterial({color:c,flatShading:true});
+function box(w,h,d,c,x=0,y=0,z=0){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),M(c));m.position.set(x,y,z);return m}
+
+// الأرض
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(400,400),M(0x4f8f3a));
+ground.rotation.x=-Math.PI/2;scene.add(ground);
+
+// أشجار وصخور
+for(let i=0;i<150;i++){
+  const x=(Math.random()-.5)*360,z=(Math.random()-.5)*360;
+  if(Math.hypot(x,z)<10)continue;
+  if(Math.random()<.75){
+    const t=new THREE.Group();
+    t.add(box(.6,2,.6,0x6b4423,0,1,0));
+    const c=new THREE.Mesh(new THREE.ConeGeometry(2,5,6),M(0x2d6a2d));c.position.y=4;t.add(c);
+    t.position.set(x,0,z);scene.add(t);
+  }else{
+    const r=new THREE.Mesh(new THREE.DodecahedronGeometry(1+Math.random()*1.5),M(0x888888));
+    r.position.set(x,.5,z);scene.add(r);
+  }
+}
+
+// الفارس والحصان (الوجه ناحية +z)
+const player=new THREE.Group();
+player.add(box(1.2,1.3,3,0x7a4a21,0,2,0));
+player.add(box(.7,1.6,.8,0x7a4a21,0,3,1.7));
+player.add(box(.6,.6,1.2,0x6a3a15,0,3.7,2.2));
+const legs=[];
+[[-.45,1.2],[.45,1.2],[-.45,-1.2],[.45,-1.2]].forEach(p=>{
+  const l=new THREE.Group();
+  l.add(box(.35,1.4,.35,0x5a3210,0,-.7,0));
+  l.position.set(p[0],1.4,p[1]);player.add(l);legs.push(l);
+});
+player.add(box(.9,1.3,.6,0x8a8a99,0,3.4,-.2));
+player.add(box(.55,.55,.55,0xd9b38c,0,4.3,-.2));
+player.add(box(.6,.3,.6,0x666677,0,4.65,-.2));
+const arm=new THREE.Group();
+arm.position.set(.6,3.8,-.2);
+arm.add(box(.25,.9,.25,0x8a8a99,0,-.4,0));
+arm.add(box(.12,1.8,.12,0xdddddd,0,-.6,.9));
+arm.children[1].rotation.x=Math.PI/2;
+player.add(arm);
+scene.add(player);
+
+// المدخلات
+let yaw=0,joy={x:0,y:0},joyId=null,lookId=null,jx0=0,jy0=0,lx=0;
+const base=document.getElementById('base'),knob=document.getElementById('knob'),atk=document.getElementById('atk');
+let swing=0;
+function doAttack(){if(swing<=0)swing=.4}
+atk.addEventListener('pointerdown',e=>{e.stopPropagation();doAttack()});
+addEventListener('pointerdown',e=>{
+  if(e.target===atk)return;
+  if(e.clientX<innerWidth/2&&joyId===null){
+    joyId=e.pointerId;jx0=e.clientX;jy0=e.clientY;
+    base.style.display='block';base.style.left=jx0+'px';base.style.top=jy0+'px';
+  }else if(e.clientX>=innerWidth/2&&lookId===null){lookId=e.pointerId;lx=e.clientX}
+});
+addEventListener('pointermove',e=>{
+  if(e.pointerId===joyId){
+    let dx=e.clientX-jx0,dy=e.clientY-jy0;
+    const d=Math.hypot(dx,dy),m=50;
+    if(d>m){dx*=m/d;dy*=m/d}
+    joy.x=dx/m;joy.y=dy/m;
+    knob.style.transform=`translate(${dx}px,${dy}px)`;
+  }else if(e.pointerId===lookId){yaw-=(e.clientX-lx)*.006;lx=e.clientX}
+});
+function up(e){
+  if(e.pointerId===joyId){joyId=null;joy.x=joy.y=0;base.style.display='none';knob.style.transform=''}
+  if(e.pointerId===lookId)lookId=null;
+}
+addEventListener('pointerup',up);addEventListener('pointercancel',up);
+
+// كيبورد للتجربة على الكمبيوتر
+const keys={};
+addEventListener('keydown',e=>{keys[e.code]=1;if(e.code==='Space')doAttack()});
+addEventListener('keyup',e=>keys[e.code]=0);
+
+const clock=new THREE.Clock();let t=0;
+function loop(){
+  requestAnimationFrame(loop);
+  const dt=Math.min(clock.getDelta(),.05);t+=dt;
+  let ix=joy.x,iy=joy.y;
+  if(keys.KeyA)ix-=1;if(keys.KeyD)ix+=1;if(keys.KeyW)iy-=1;if(keys.KeyS)iy+=1;
+  if(keys.KeyQ)yaw+=dt*2;if(keys.KeyE)yaw-=dt*2;
+  const len=Math.hypot(ix,iy);
+  if(len>.15){
+    const k=Math.min(len,1)/len;ix*=k;iy*=k;
+    const fx=-Math.sin(yaw),fz=-Math.cos(yaw),rx=Math.cos(yaw),rz=-Math.sin(yaw);
+    const mx=rx*ix+fx*(-iy),mz=rz*ix+fz*(-iy);
+    player.position.x+=mx*9*dt;player.position.z+=mz*9*dt;
+    const target=Math.atan2(mx,mz);
+    let diff=target-player.rotation.y;
+    diff=Math.atan2(Math.sin(diff),Math.cos(diff));
+    player.rotation.y+=diff*Math.min(1,dt*10);
+    legs.forEach((l,i)=>l.rotation.x=Math.sin(t*12+(i%2?Math.PI:0))*.6);
+  }else legs.forEach(l=>l.rotation.x*=.8);
+  player.position.x=Math.max(-190,Math.min(190,player.position.x));
+  player.position.z=Math.max(-190,Math.min(190,player.position.z));
+  if(swing>0){swing-=dt;arm.rotation.x=-Math.sin((1-swing/.4)*Math.PI)*2}else arm.rotation.x=0;
+  const cp=new THREE.Vector3(player.position.x+Math.sin(yaw)*11,player.position.y+7,player.position.z+Math.cos(yaw)*11);
+  cam.position.lerp(cp,Math.min(1,dt*6));
+  cam.lookAt(player.position.x,3,player.position.z);
+  ren.render(scene,cam);
+}
+loop();
+</script>
+</body>
+</html>
